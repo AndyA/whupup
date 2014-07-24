@@ -6,11 +6,26 @@ DB_NAME='[% wp.DB_NAME %]'
 DB_USER='[% wp.DB_USER %]'
 DB_PASSWORD='[% wp.DB_PASSWORD %]'
 DB_HOST='[% wp.DB_HOST %]'
+CALLBACK='[% whupup.callback %]'
 
 OUT="sql"
 
 MYSQL=$( which mysql )
 MYSQLDUMP=$( which mysqldump )
+WGET=$( which wget )
+CURL=$( which curl )
+LYNX=$( which lynx )
+
+function hit {
+  local url="$1"
+  if [ "$WGET" -a -x "$WGET" ]; then
+    $WGET -q -O /dev/null "$url"
+  elif [ "$CURL" -a -x "$CURL" ]; then
+    $CURL -s "$url" > /dev/null
+  elif [ "$LYNX" -a -x "$LYNX" ]; then
+    $LYNX --source "$url" > /dev/null
+  fi
+}
 
 DBOPT="-u $DB_USER"
 [ "$DB_PASSWORD" ] && DBOPT="$DBOPT -p$DB_PASSWORD"
@@ -22,6 +37,10 @@ echo 'SHOW TABLES' | $MYSQL $DBOPT | tail -n +2 | \
     echo "Dumping $tbl to $OUT/$tbl.sql"
     $MYSQLDUMP --skip-extended-insert --skip-dump-date $DBOPT "$tbl" > "$OUT/$tbl.sql"; 
   done
+
+# Callback
+
+hit "$CALLBACK"
 
 # vim:ts=2:sw=2:sts=2:et:ft=sh
 

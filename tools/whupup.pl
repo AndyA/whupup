@@ -17,7 +17,8 @@ use Path::Class;
 use Template;
 
 use constant INST_PROTO => dir $FindBin::Bin, '..', 'install';
-use constant INST_DIR => 'whupup';
+use constant PROBE      => dir $FindBin::Bin, 'probe.php';
+use constant INST_DIR   => 'whupup';
 
 my %O = ( install => 0 );
 
@@ -57,8 +58,11 @@ sub install {
   my $root   = $ftp->pwd;
   my $whupup = join '/', $root, INST_DIR;
   my $info   = {
-    root => $root,
-    whupup => { dir => $whupup },
+    root   => $root,
+    whupup => {
+      dir      => $whupup,
+      callback => 'http://jaded.uk/ping',
+    },
     wp     => get_wp_config( $gl, $site, $ftp ),
     site   => $site,
     global => $gl,
@@ -110,27 +114,24 @@ sub get_wp_config {
   my ( $gl, $site, $ftp ) = @_;
   my $local = tmp_file( $gl, 'wp-config.php' );
   $ftp->get( $site->{config} // 'wp-config.php', "$local" );
-  my $config = parse_php_defines($local);
+  my $config = parse_using_php($local);
   return $config;
 }
 
-sub parse_php_defines {
-  my $file  = shift;
-  my $stash = {};
-  open my $fh, '<', $file;
-  while (<$fh>) {
-    chomp( my $ln = $_ );
-    if ( $ln =~ m{^\s*define\s*\(\s*'([^']*)'\s*,\s*'([^']*)'\s*\)} ) {
-      $stash->{$1} = $2;
-    }
-  }
-  return $stash;
+sub parse_using_php {
+  my $file = shift;
+  open my $fh, '-|', 'php', PROBE, $file;
+  my $config = JSON->new->decode(
+    do { local $/; <$fh> }
+  );
+  close $fh;
+  return $config;
 }
 
 sub tmp_file {
   my ( $gl, $leaf ) = @_;
   state $next = 0;
-  $leaf //= sprintf 'tmp.%08d', $next++;
+  $leaf //= sprintf ' tmp . %08d', $next++;
   my $tmp = file $gl->{tmp} // '/tmp', "whupup.$$", $leaf;
   $tmp->parent->mkpath;
   return $tmp;
