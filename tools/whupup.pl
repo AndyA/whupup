@@ -15,6 +15,7 @@ use Net::FTP;
 use POSIX qw( strftime );
 use Path::Class;
 use Template;
+use LWP::UserAgent;
 
 use constant INST_PROTO => dir $FindBin::Bin, '..', 'install';
 use constant PROBE      => dir $FindBin::Bin, 'probe.php';
@@ -53,6 +54,7 @@ sub whupup {
     install( $gl, $site );
   }
   else {
+    secure( $gl, $site );
     if ( poll( $gl, $site, $state ) ) {
       mirror( $gl, $site, $dir );
       snapshot( $gl, $site, $dir );
@@ -102,10 +104,25 @@ sub install {
   my $dir = build_inject( $gl, $site, $info );
   $ftp->mkdir( $whupup, 1 ) || die "Can't make $whupup: $@";
   rmirror( $gl, $site, $dir, $whupup );
+  secure( $gl, $site );
   print "Remote scripts installed.\n",
    "Please add the following line to your crontab on $site->{host}:\n\n";
   my @cron = ( int( rand 60 ), 4, '*', '*', '*' );
   print join( ' ', @cron ), "\t$whupup/dbsave.sh\n\n";
+}
+
+sub secure {
+  my ( $gl, $site ) = @_;
+  print "Checking security on ", INST_DIR, " directory\n";
+  if ( !security_check( $gl, $site ) ) {
+    print "Your whupup installation is insecure.\n",
+     "Please remove the ",
+     INST_DIR, " directory from the server\n";
+    exit 1;
+  }
+  else {
+    print "Security OK\n";
+  }
 }
 
 sub mk_passwd {
@@ -225,6 +242,13 @@ sub syntax {
   return <<EOT
 Syntax: whupup.pl [--install] sites.json ...
 EOT
+}
+
+sub security_check {
+  my ( $gl, $site ) = @_;
+  my $url = join '', $site->{url}, join '/', INST_DIR, POLLFILE;
+  my $resp = LWP::UserAgent->new->get($url);
+  return $resp->code >= 400 && $resp->code < 500;
 }
 
 # vim:ts=2:sw=2:sts=2:et:ft=perl
