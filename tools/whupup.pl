@@ -18,20 +18,26 @@ use Template;
 
 use constant INST_PROTO => dir $FindBin::Bin, '..', 'install';
 use constant PROBE      => dir $FindBin::Bin, 'probe.php';
+use constant STATE      => file 'state.json';
 use constant INST_DIR   => 'whupup';
+use constant POLLFILE   => 'poll';
 
 my %O = ( install => 0 );
 
 GetOptions( 'install' => \$O{install} ) or die syntax();
 
+my $state = -e STATE ? JSON->new->decode( scalar STATE->slurp ) : {};
+
 for my $spec (@ARGV) {
   my $info = JSON->new->decode( scalar file($spec)->slurp );
   my $gl = $info->{global} || {};
   for my $site ( @{ $info->{sites} } ) {
-    whupup( $gl, $site );
+    whupup( $gl, $site, $state );
   }
   tmp_file( $gl, 'probe' )->parent->rmtree;
 }
+
+print { STATE->openw } JSON->new->pretty->canonical->encode($state);
 
 sub site_dir {
   my $gl   = shift;
@@ -40,27 +46,51 @@ sub site_dir {
 }
 
 sub whupup {
-  my ( $gl, $site ) = @_;
+  my ( $gl, $site, $state ) = @_;
   my $dir = site_dir( $gl, $site, 'backup' );
   $dir->mkpath;
   if ( $O{install} ) {
     install( $gl, $site );
   }
   else {
-    mirror( $gl, $site, $dir );
-    snapshot( $gl, $site, $dir );
+    if ( poll( $gl, $site, $state ) ) {
+      mirror( $gl, $site, $dir );
+      snapshot( $gl, $site, $dir );
+    }
   }
+}
+
+sub poll {
+  my ( $gl, $site, $state ) = @_;
+  my $ftp      = ftp_connect( $gl, $site );
+  my $whupup   = get_whupup($ftp);
+  my $pollfile = join( '/', $whupup, POLLFILE );
+  my $mdtm     = $ftp->mdtm($pollfile);
+
+  my $omdtm = $state->{ $site->{name} }{mtime};
+  unless ( defined $omdtm && $omdtm == $mdtm ) {
+    $state->{ $site->{name} }{mtime} = $mdtm;
+    return 1;
+  }
+
+  return 0;
+}
+
+sub get_whupup {
+  my $ftp = shift;
+  join '/', $ftp->pwd, INST_DIR;
 }
 
 sub install {
   my ( $gl, $site ) = @_;
   my $ftp    = ftp_connect( $gl, $site );
   my $root   = $ftp->pwd;
-  my $whupup = join '/', $root, INST_DIR;
+  my $whupup = get_whupup($ftp);
   my $info   = {
     root   => $root,
     whupup => {
       dir      => $whupup,
+      pollfile => join( '/', $whupup, POLLFILE ),
       callback => 'http://jaded.uk/ping',
     },
     wp     => get_wp_config( $gl, $site, $ftp ),
