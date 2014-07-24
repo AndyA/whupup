@@ -1,0 +1,4 @@
+.*.sw?
+/Session.vim
+/backup/
+/sites.json
