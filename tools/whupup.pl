@@ -131,7 +131,7 @@ sub parse_using_php {
 sub tmp_file {
   my ( $gl, $leaf ) = @_;
   state $next = 0;
-  $leaf //= sprintf ' tmp . %08d', $next++;
+  $leaf //= sprintf 'tmp.%08d', $next++;
   my $tmp = file $gl->{tmp} // '/tmp', "whupup.$$", $leaf;
   $tmp->parent->mkpath;
   return $tmp;
