@@ -66,6 +66,7 @@ sub poll {
   my $whupup   = get_whupup($ftp);
   my $pollfile = join( '/', $whupup, POLLFILE );
   my $mdtm     = $ftp->mdtm($pollfile);
+  return unless defined $mdtm;
 
   my $omdtm = $state->{ $site->{name} }{mtime};
   unless ( defined $omdtm && $omdtm == $mdtm ) {
@@ -101,6 +102,10 @@ sub install {
   my $dir = build_inject( $gl, $site, $info );
   $ftp->mkdir( $whupup, 1 ) || die "Can't make $whupup: $@";
   rmirror( $gl, $site, $dir, $whupup );
+  print "Remote scripts installed.\n",
+   "Please add the following line to your crontab on $site->{host}:\n\n";
+  my @cron = ( int( rand 60 ), 4, '*', '*', '*' );
+  print join( ' ', @cron ), "\t$whupup/dbsave.sh\n\n";
 }
 
 sub mk_passwd {
